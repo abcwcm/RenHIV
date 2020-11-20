@@ -1,0 +1,9 @@
+COUNT_TABLE_ID	STARTING_CD4_T_CELL	HIV	CTL
+23	7486_7	naive CD4+	negative	absent
+24	7486_8	naive CD4+	positive	absent
+25	7486_9	naive CD4+	negative	absent
+26	7486_10	naive CD4+	positive	absent
+33	7486_17	total CD4+	negative	absent
+34	7486_18	total CD4+	positive	absent
+35	7486_19	total CD4+	negative	absent
+36	7486_20	total CD4+	positive	absent

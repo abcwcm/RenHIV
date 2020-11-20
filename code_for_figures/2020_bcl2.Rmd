@@ -1,0 +1,157 @@
+---
+title: "Heatmaps related to BCL-2 family proteins"
+author: "pz"
+date: "10/27/2020"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, bootstrap.show.code = FALSE, results='hide', bootstrap.show.message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE}
+set.seed(100)
+knitr::opts_chunk$set(bootstrap.show.code = FALSE, message=FALSE, warning=FALSE)
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(ggplot2))
+suppressMessages(library(magrittr))
+suppressMessages(library(kableExtra))
+suppressMessages(library(magrittr))
+suppressMessages(library(gridExtra))
+suppressMessages(library(DESeq2))
+suppressMessages(library(pheatmap))
+suppressMessages(library(knitr))
+suppressMessages(library(data.table))
+```
+
+
+```{r read-in-counts, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE, context="data"}
+counts <- read.table(file = "gene.counts.txt", header = TRUE, check.names=FALSE, row.names=1)
+decoder.data <- read.table(file = "metadata.txt", header = TRUE, check.names=FALSE, sep="\t", stringsAsFactors = F)
+# colnames(counts) == decoder.data$COUNT_TABLE_ID 
+```
+
+# Methods
+
+Sequences were aligned with default parameters to the human reference genome (GRCh38.p12) with STAR (Version 2.6.0c).
+Gene expression estimates were obtained with featureCounts using composite gene models from Gencode release 28.
+Differentially expressed genes were determined with DESeq2 using Wald tests (q < 0.01).
+Expression heatmaps were generated using variance-stabilized data, centered and scaled across each gene.
+
+
+# Differential expression analysis
+
+For each CD4 starting cell type, we performed differential gene expression analysis with DESeq2.  The following comparisons were made:
+
+1. HIV+ vs. HIV-
+
+
+```{r deg_naive_cd4, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE,  fig.width=10, fig.height=7, context="data", eval=T}
+decoder.data.subset <- subset(decoder.data,  STARTING_CD4_T_CELL == "naive CD4+")
+decoder.data.subset$HIV <-  factor(make.names(decoder.data.subset$HIV)) 	
+decoder.data.subset$CTL <-  factor(make.names(decoder.data.subset$CTL)) 	
+counts.subset = counts[,decoder.data.subset$COUNT_TABLE_ID]
+
+library(DESeq2)	
+cnts = counts.subset
+deseq2.coldata <- data.frame(row.names = colnames(cnts), decoder.data.subset)
+dds<- DESeq2::DESeqDataSetFromMatrix(countData = cnts, colData = deseq2.coldata, design = ~  HIV)
+dds <- DESeq(dds)
+
+# HIV+ - HIV-
+res <- results(dds, contrast=c("HIV", "positive", "negative"), alpha=0.01)
+naive_CTLpresent.HIVpositive_vs_negative.all <- as.data.frame(res)
+naive_CTLpresent.HIVpositive_vs_negative.sig <- as.data.frame(subset(res , padj < 0.01))
+```
+
+
+```{r deg_total_only, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE,  fig.width=10, fig.height=7, context="data", eval=T}
+decoder.data.subset <- subset(decoder.data,  STARTING_CD4_T_CELL == "total CD4+")
+decoder.data.subset$HIV <-  factor(make.names(decoder.data.subset$HIV)) 	
+decoder.data.subset$CTL <-  factor(make.names(decoder.data.subset$CTL)) 	
+counts.subset = counts[,decoder.data.subset$COUNT_TABLE_ID]
+
+library(DESeq2)	
+cnts = counts.subset
+deseq2.coldata <- data.frame(row.names = colnames(cnts), decoder.data.subset)
+dds<- DESeq2::DESeqDataSetFromMatrix(countData = cnts, colData = deseq2.coldata, design = ~  HIV)
+dds <- DESeq(dds)
+baseMeanPerLvl <- as.data.frame(sapply( levels(dds$HIV), function(lvl) rowMeans( counts(dds,normalized=TRUE)[,dds$HIV == lvl] ) ))
+baseMeanPerLvl_total <- baseMeanPerLvl
+
+
+# HIV+ - HIV-
+res <- results(dds, contrast=c("HIV", "positive", "negative"), alpha=0.01)
+total_CTLpresent.HIVpositive_vs_negative.all <- as.data.frame(res)
+total_CTLpresent.HIVpositive_vs_negative.sig <- as.data.frame(subset(res , padj < 0.01))
+
+```
+
+
+The following genes were detected as differentially expressed (padj < 0.01) in each contrast for each experiment:
+
+
+
+```{r  dge_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=T, comment=FALSE}
+
+df_deg <-
+  data.frame(
+  "HIV+ vs. HIV- (CTL present)" = c(
+  nrow(total_CTLpresent.HIVpositive_vs_negative.sig),
+  nrow(naive_CTLpresent.HIVpositive_vs_negative.sig)),
+    check.names = F,
+  stringsAsFactors = F)
+  row.names(df_deg) <- c("total CD4+", "naive CD4+")
+kable(t(df_deg), row.names=T)  %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+
+#  Transcriptional profiles of BCL-2 family proteins 
+
+Heatmaps of BCL-2 related genes.
+
+```{r heatmaps,  message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE,  fig.width=10, fig.height=7, context="data", eval=T}
+bcl2_family <- c("BCL2L2-PABPN1", "BCL2L13", "BAX", "BIK", "BCL2L2", "MCL1", "BCL2L11", "BCL2L15", "BCL2", "BCL2L14", "HRK", "BOK", "BCL2L10", "BCL2A1", "BAD", "BAK1", "BCL2L1", "BMF", "PMAIP1","BBC3","BID","BCL2L12")
+
+rwb <- colorRampPalette(colors = c("blue", "white", "red"))
+
+# total
+decoder.data.subset <- subset(decoder.data, STARTING_CD4_T_CELL == "total CD4+")
+counts.subset = counts[,decoder.data.subset$COUNT_TABLE_ID]
+bcl2_family_lbls <- bcl2_family
+degs = total_CTLpresent.HIVpositive_vs_negative.sig
+bcl2_family_lbls[which( bcl2_family %in% row.names(degs) == TRUE)] <- paste0(bcl2_family[which( bcl2_family %in% row.names(degs) == TRUE)], "*")
+df <- data.frame(HIV=decoder.data.subset$HIV)
+row.names(df) <- colnames(counts.subset)
+p1 <- pheatmap(vst(as.matrix(counts.subset))[bcl2_family,], scale="row", show_rownames = T, annotation_col = df, cluster_cols = T, cellwidth = 15, cellheight=10, main="BCL-2 family proteins (Total CD4+)", silent=T, color = rwb(100), gaps_col = c(2),  labels_row=bcl2_family_lbls)
+
+
+# naive
+decoder.data.subset <- subset(decoder.data, STARTING_CD4_T_CELL == "naive CD4+")
+counts.subset = counts[,decoder.data.subset$COUNT_TABLE_ID]
+bcl2_family_lbls <- bcl2_family
+degs = naive_CTLpresent.HIVpositive_vs_negative.sig
+bcl2_family_lbls[which( bcl2_family %in% row.names(degs) == TRUE)] <- paste0(bcl2_family[which( bcl2_family %in% row.names(degs) == TRUE)], "*")
+df <- data.frame(HIV=decoder.data.subset$HIV)
+row.names(df) <- colnames(counts.subset)
+p2 <- pheatmap(vst(as.matrix(counts.subset))[bcl2_family,], scale="row", show_rownames = T, annotation_col = df, cluster_cols = T, cellwidth = 15, cellheight=10, main="BCL-2 family proteins (Naive CD4+)", silent=T, color = rwb(100), gaps_col = c(2),  labels_row=bcl2_family_lbls)
+
+
+grid.arrange(grobs = list(p1[[4]],p2[[4]]), ncol=2, nrow=1)
+
+```
+
+
+# Session info
+
+```{r session,  message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, comment=FALSE,  fig.width=10, fig.height=10, context="data", eval=T}
+
+sessioninfo::session_info()%>%
+  details::details(
+    summary = 'Current session info',
+    open    = TRUE
+  )
+
+```
